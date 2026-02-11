@@ -1,9 +1,11 @@
 #include <Wire.h>
-#include <SPI.h>
-#include <SD.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include "esp_camera.h"
+
+#include <FS.h>
+#include <SD_MMC.h>
+
 #include "INA226.h"
 #include <TinyGPS++.h>
 #include <RTClib.h>
@@ -12,56 +14,61 @@
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 
-// PIN PLAN (ESP32-S3)
-// I2C for INA226 + DS3231
+// I2C (INA226 + RTC)
 #define I2C_SDA 1
 #define I2C_SCL 2
 
-// INA226 addresses
-#define INA_IN_ADDR 0x40
+#define INA_IN_ADDR  0x40
 #define INA_OUT_ADDR 0x41
 
-// GPS UART1
-#define GPS_RX_PIN 39  // connect to GPS TX
-#define GPS_TX_PIN 40  // connect to GPS RX
-
-// SD SPI
-#define SD_CS 34
-#define SD_MOSI 35
-#define SD_SCK 36
-#define SD_MISO 37
-
-// OV2640 Camera pins
-#define CAM_PWDN 42
-#define CAM_RESET 41
-#define CAM_XCLK 16
-#define CAM_SIOD 12
-#define CAM_SIOC 13
-
-#define CAM_D0 4
-#define CAM_D1 5
-#define CAM_D2 6
-#define CAM_D3 7
-#define CAM_D4 8
-#define CAM_D5 9
-#define CAM_D6 10
-#define CAM_D7 11
-
-#define CAM_VSYNC 18
-#define CAM_HREF 21
-#define CAM_PCLK 17
-
-// Objects
-WebServer server(80);
 INA226 ina_in(INA_IN_ADDR);
 INA226 ina_out(INA_OUT_ADDR);
-TinyGPSPlus gps;
+
 RTC_DS3231 rtc;
 bool rtcOK = false;
 
-// Data Structure
+// GPS
+// GPSTX -> GPIO44,  GPSRX -> GPIO43
+static const int GPS_RX_PIN = 44;   // ESP PULL (TX from ESP32 side)
+static const int GPS_TX_PIN = 43;   // ESP PUSH (RX from ESP32 side)
+
+HardwareSerial gpsSerial(1);
+TinyGPSPlus gps;
+
+// SD_MMC (1-bit)
+#define SD_MMC_CMD 38
+#define SD_MMC_CLK 39
+#define SD_MMC_D0  40
+
+// Camera pins
+// SCCB/I2C CAM
+#define CAM_SIOD 4
+#define CAM_SIOC 5
+
+#define CAM_VSYNC 6
+#define CAM_HREF  7
+#define CAM_PCLK  13
+#define CAM_XCLK  15
+
+// D0..D7 of esp_camera = Y2..Y9
+#define CAM_D0 11  // Y2
+#define CAM_D1 9   // Y3
+#define CAM_D2 8   // Y4
+#define CAM_D3 10  // Y5
+#define CAM_D4 12  // Y6
+#define CAM_D5 18  // Y7
+#define CAM_D6 17  // Y8
+#define CAM_D7 16  // Y9
+
+// Many S3-CAM boards don't output PWDN/RESET; use -1 first
+#define CAM_PWDN  -1
+#define CAM_RESET -1
+
+//  Web/RTOS
+WebServer server(80);
+
 struct MeasurementData {
-  char timestamp[25];
+  char timestamp[32];
   float vin, iin, pin;
   float vout, iout, pout;
   float efficiency;
@@ -71,15 +78,14 @@ struct MeasurementData {
 QueueHandle_t dataQueue;
 SemaphoreHandle_t sdMutex;
 SemaphoreHandle_t camMutex;
+SemaphoreHandle_t latestMutex;
 
 volatile bool capturePhoto = false;
 volatile uint32_t photoCounter = 0;
 
-// Save the latest settings to display on the website (option)
 MeasurementData latest;
-SemaphoreHandle_t latestMutex;
 
-// Helpers
+// Timestamp helper
 static void makeTimestamp(char* out, size_t outSize) {
   if (rtcOK) {
     DateTime now = rtc.now();
@@ -87,17 +93,43 @@ static void makeTimestamp(char* out, size_t outSize) {
              now.year(), now.month(), now.day(),
              now.hour(), now.minute(), now.second());
   } else {
-    // Fallback by millis
-    uint32_t ms = millis();
-    snprintf(out, outSize, "ms_%lu", (unsigned long)ms);
+    snprintf(out, outSize, "ms_%lu", (unsigned long)millis());
   }
 }
 
-// Camera init (OV2640 on ESP32-S3)
+// SD init (SD_MMC 1-bit)
+bool initSDMMC_1bit() {
+  SD_MMC.setPins(SD_MMC_CLK, SD_MMC_CMD, SD_MMC_D0);
+
+  // true = 1-bit mode (D0)
+  if (!SD_MMC.begin("/sdcard", true)) {
+    Serial.println("SD_MMC mount failed");
+    return false;
+  }
+  Serial.println("SD_MMC mounted");
+
+  if (!SD_MMC.exists("/photos")) {
+    SD_MMC.mkdir("/photos");
+    Serial.println("Created /photos");
+  }
+
+  if (!SD_MMC.exists("/datalog.csv")) {
+    File f = SD_MMC.open("/datalog.csv", FILE_WRITE);
+    if (f) {
+      f.println("Timestamp,Vin(V),Iin(A),Pin(W),Vout(V),Iout(A),Pout(W),Efficiency(%),Latitude,Longitude");
+      f.close();
+      Serial.println("Created /datalog.csv header");
+    }
+  }
+
+  return true;
+}
+
+// Camera init
 bool initCamera() {
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
+  config.ledc_timer   = LEDC_TIMER_0;
 
   config.pin_d0 = CAM_D0;
   config.pin_d1 = CAM_D1;
@@ -108,30 +140,30 @@ bool initCamera() {
   config.pin_d6 = CAM_D6;
   config.pin_d7 = CAM_D7;
 
-  config.pin_xclk = CAM_XCLK;
-  config.pin_pclk = CAM_PCLK;
+  config.pin_xclk  = CAM_XCLK;
+  config.pin_pclk  = CAM_PCLK;
   config.pin_vsync = CAM_VSYNC;
-  config.pin_href = CAM_HREF;
+  config.pin_href  = CAM_HREF;
 
   config.pin_sscb_sda = CAM_SIOD;
   config.pin_sscb_scl = CAM_SIOC;
 
-  config.pin_pwdn = CAM_PWDN;
+  config.pin_pwdn  = CAM_PWDN;
   config.pin_reset = CAM_RESET;
 
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
 
   if (psramFound()) {
-    config.frame_size = FRAMESIZE_VGA;  // 640x480
-    config.jpeg_quality = 12;           // 10-14
-    config.fb_count = 2;
-    config.grab_mode = CAMERA_GRAB_LATEST;
+    config.frame_size   = FRAMESIZE_VGA; // 640x480
+    config.jpeg_quality = 12; // 10-14
+    config.fb_count     = 2;
+    config.grab_mode    = CAMERA_GRAB_LATEST;
   } else {
-    config.frame_size = FRAMESIZE_QVGA;  // 320x240
+    config.frame_size   = FRAMESIZE_QVGA; // 320x240
     config.jpeg_quality = 14;
-    config.fb_count = 1;
-    config.grab_mode = CAMERA_GRAB_LATEST;
+    config.fb_count     = 1;
+    config.grab_mode    = CAMERA_GRAB_LATEST;
   }
 
   esp_err_t err = esp_camera_init(&config);
@@ -139,34 +171,13 @@ bool initCamera() {
     Serial.printf("Camera init failed: 0x%x\n", err);
     return false;
   }
+
+  sensor_t *s = esp_camera_sensor_get();
+  if (s) {
+    Serial.printf("Camera PID: 0x%04X\n", s->id.PID);
+  }
+
   Serial.println("Camera initialized");
-  return true;
-}
-
-// SD init (SPI)
-bool initSD_SPI() {
-  SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-
-  // Reduce risk: start with 20-25MHz
-  if (!SD.begin(SD_CS, SPI, 25000000)) {
-    Serial.println("SD(SPI) mount failed");
-    return false;
-  }
-  Serial.println("SD(SPI) mounted");
-
-  if (!SD.exists("/photos")) {
-    SD.mkdir("/photos");
-    Serial.println("Created /photos");
-  }
-
-  if (!SD.exists("/datalog.csv")) {
-    File f = SD.open("/datalog.csv", FILE_WRITE);
-    if (f) {
-      f.println("Timestamp,Vin(V),Iin(A),Pin(W),Vout(V),Iout(A),Pout(W),Efficiency(%),Latitude,Longitude");
-      f.close();
-      Serial.println("Created /datalog.csv header");
-    }
-  }
   return true;
 }
 
@@ -183,7 +194,7 @@ void handleRoot() {
   html += "<style>body{font-family:Arial;margin:16px;} .box{max-width:900px;margin:auto;} img{max-width:100%;height:auto;border:1px solid #ccc;} ";
   html += "button{padding:10px 16px;font-size:16px;margin:6px;} pre{background:#f6f6f6;padding:10px;overflow:auto;}</style>";
   html += "</head><body><div class='box'>";
-  html += "<h2>ESP32-S3 OV2640 + INA226 Logger</h2>";
+  html += "<h2>ESP32-S3 CAM Logger</h2>";
   html += "<img id='img' src='/jpg?t=0' />";
   html += "<div><button onclick='cap()'>Capture Photo</button>";
   html += "<button onclick='snap()'>Refresh Image</button></div>";
@@ -207,7 +218,7 @@ void handleRoot() {
   server.send(200, "text/html", html);
 }
 
-// Send JPEG 1 Frame
+// Send 1 JPEG frame (use client.write because WebServer.send(buf,len) doesn't exist)
 void handleJPG() {
   if (xSemaphoreTake(camMutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
     server.send(503, "text/plain", "Camera busy");
@@ -253,7 +264,7 @@ void handleStatus() {
   server.send(200, "text/plain", s);
 }
 
-// Task: Data Collector
+// TASK: Data Collector (INA226 + GPS + timestamp)
 void taskDataCollector(void* pv) {
   (void)pv;
   Serial.println("Task DataCollector: Running");
@@ -262,7 +273,6 @@ void taskDataCollector(void* pv) {
     MeasurementData d{};
     makeTimestamp(d.timestamp, sizeof(d.timestamp));
 
-    // INA226
     d.vin = ina_in.getBusVoltage();
     d.iin = ina_in.getCurrent();
     d.pin = ina_in.getPower();
@@ -273,12 +283,12 @@ void taskDataCollector(void* pv) {
 
     d.efficiency = (d.pin > 0.000001f) ? (d.pout / d.pin) * 100.0f : 0.0f;
 
-    // GPS
-    while (Serial1.available()) gps.encode(Serial1.read());
+    while (gpsSerial.available()) {
+      gps.encode(gpsSerial.read());
+    }
     d.lat = gps.location.isValid() ? gps.location.lat() : 0.0;
     d.lng = gps.location.isValid() ? gps.location.lng() : 0.0;
 
-    // Update latest
     if (xSemaphoreTake(latestMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
       latest = d;
       xSemaphoreGive(latestMutex);
@@ -289,7 +299,7 @@ void taskDataCollector(void* pv) {
   }
 }
 
-// Task: SD Logger (CSV)
+// TASK: SD Logger (CSV)
 void taskSDLogger(void* pv) {
   (void)pv;
   Serial.println("Task SDLogger: Running");
@@ -298,7 +308,7 @@ void taskSDLogger(void* pv) {
     MeasurementData d{};
     if (xQueueReceive(dataQueue, &d, portMAX_DELAY) == pdPASS) {
       if (xSemaphoreTake(sdMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-        File f = SD.open("/datalog.csv", FILE_APPEND);
+        File f = SD_MMC.open("/datalog.csv", FILE_APPEND);
         if (f) {
           char line[256];
           snprintf(line, sizeof(line),
@@ -316,14 +326,12 @@ void taskSDLogger(void* pv) {
           Serial.println("SDLogger: open datalog.csv failed");
         }
         xSemaphoreGive(sdMutex);
-      } else {
-        Serial.println("SDLogger: sdMutex timeout");
       }
     }
   }
 }
 
-// Task: Camera capture to SD (/capture)
+// TASK: Camera save photo to SD when /capture called
 void taskCamera(void* pv) {
   (void)pv;
   Serial.println("Task Camera: Running");
@@ -335,7 +343,6 @@ void taskCamera(void* pv) {
     }
     capturePhoto = false;
 
-    // lock camera
     if (xSemaphoreTake(camMutex, pdMS_TO_TICKS(2000)) != pdTRUE) {
       Serial.println("CameraTask: camMutex timeout");
       continue;
@@ -348,26 +355,22 @@ void taskCamera(void* pv) {
       continue;
     }
 
-    // lock SD
     if (xSemaphoreTake(sdMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
-      char ts[25];
+      char ts[32];
       makeTimestamp(ts, sizeof(ts));
+      for (int i = 0; ts[i]; i++) if (ts[i] == ':') ts[i] = '_';
 
-      // Use timestamp
-      for (int i = 0; ts[i]; i++)
-        if (ts[i] == ':') ts[i] = '_';
-
-      char filename[80];
+      char filename[96];
       snprintf(filename, sizeof(filename), "/photos/img_%s.jpg", ts);
 
-      File file = SD.open(filename, FILE_WRITE);
+      File file = SD_MMC.open(filename, FILE_WRITE);
       if (file) {
         file.write(fb->buf, fb->len);
         file.close();
         photoCounter++;
         Serial.printf("Photo saved: %s (%u bytes)\n", filename, (unsigned)fb->len);
       } else {
-        Serial.println("CameraTask: open file failed");
+        Serial.println("CameraTask: open photo file failed");
       }
 
       xSemaphoreGive(sdMutex);
@@ -384,52 +387,48 @@ void taskCamera(void* pv) {
 void setup() {
   Serial.begin(115200);
   delay(300);
-  Serial.println("\n--- ESP32-S3 OV2640 + INA226 + SD(SPI) + Web ---");
+  Serial.println("\n--- ESP32-S3 CAM (OV2640) + SD_MMC 1-bit + INA226 + Web ---");
 
-  // RTOS objects
   sdMutex = xSemaphoreCreateMutex();
   camMutex = xSemaphoreCreateMutex();
   latestMutex = xSemaphoreCreateMutex();
   dataQueue = xQueueCreate(10, sizeof(MeasurementData));
   if (!sdMutex || !camMutex || !latestMutex || !dataQueue) {
     Serial.println("Failed to create RTOS objects");
-    while (1)
-      ;
+    while (1);
   }
 
   // I2C
   Wire.begin(I2C_SDA, I2C_SCL);
 
-  // INA226 init
+  // INA226
   if (!ina_in.begin() || !ina_out.begin()) {
     Serial.println("INA226 not found (check wiring/address)");
-    while (1)
-      ;
+    while (1);
   }
 
-  // Calibration for low-current work (Rshunt = 0.1 ohm)
-  ina_in.setMaxCurrentShunt(0.2, 0.1);   // 200mA, 0.1Ω
-  ina_out.setMaxCurrentShunt(0.2, 0.1);  // 200mA, 0.1Ω
+  // calibration (Rshunt = 0.1 ohm)
+  ina_in.setMaxCurrentShunt(0.2, 0.1); //200mA
+  ina_out.setMaxCurrentShunt(0.2, 0.1); //200mA
   Serial.println("INA226 OK");
 
   // RTC
   rtcOK = rtc.begin();
-  if (rtcOK) Serial.println("RTC OK");
-  else Serial.println("RTC not found (timestamp fallback = millis)");
+  Serial.println(rtcOK ? "RTC OK" : "RTC not found (fallback timestamp)");
 
-  // GPS
-  Serial1.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-  Serial.println("GPS UART1 started");
+  // GPS (use UART on RX/TX esp32)
+  gpsSerial.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  Serial.println("GPS serial started");
 
-  // SD
-  if (!initSD_SPI())
-    while (1)
-      ;
+  // SD_MMC 1-bit
+  if (!initSDMMC_1bit()) {
+    while (1);
+  }
 
   // Camera
-  if (!initCamera())
-    while (1)
-      ;
+  if (!initCamera()) {
+    while (1);
+  }
 
   // WiFi
   WiFi.mode(WIFI_STA);
@@ -440,11 +439,12 @@ void setup() {
     Serial.print(".");
   }
   Serial.println();
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.print("WiFi OK. IP = ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("WiFi failed (server still starts, but not reachable)");
+    Serial.println("WiFi failed (server still starts but not reachable)");
   }
 
   // Web routes
@@ -455,10 +455,10 @@ void setup() {
   server.begin();
   Serial.println("WebServer started. Open http://<ip>/");
 
-  // Tasks (S3 dual-core)
+  // Tasks
   xTaskCreatePinnedToCore(taskDataCollector, "DataCollector", 4096, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(taskSDLogger, "SDLogger", 4096, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(taskCamera, "CameraTask", 8192, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(taskSDLogger,      "SDLogger",      4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(taskCamera,        "CameraTask",    8192, NULL, 1, NULL, 1);
 
   Serial.println("Setup complete.");
 }
