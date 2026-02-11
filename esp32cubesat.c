@@ -29,8 +29,8 @@ bool rtcOK = false;
 
 // GPS
 // GPSTX -> GPIO44,  GPSRX -> GPIO43
-static const int GPS_RX_PIN = 44;   // ESP PULL (TX from ESP32 side)
-static const int GPS_TX_PIN = 43;   // ESP PUSH (RX from ESP32 side)
+static const int GPS_RX_PIN = 21;   // ESP PULL (TX from ESP32 side)
+static const int GPS_TX_PIN = 47;   // ESP PUSH (RX from ESP32 side)
 
 HardwareSerial gpsSerial(1);
 TinyGPSPlus gps;
