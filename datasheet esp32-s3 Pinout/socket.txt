@@ -5,7 +5,7 @@ Pin	Net/Signal what it use for?
 A1	GND_STACK	ground
 A2	VBAT_STACK	bat 7.4V send to Powerboard
 A3	GND_STACK	ground (return current of VBAT)
-A4	VBAT_STACK	parallel add current/reduce voltage drop
+A4	VBAT_STACK	bat 7.4V parallel add current/reduce voltage drop
 A5	GND_STACK	ground
 A6	3V3_STACK	3.3V from Powerboard send to all board
 A7	GND_STACK	ground
@@ -22,11 +22,11 @@ B (B1 → B15) :
 Pin	Net/Signal	what it use for?
 B1	VBAT_STACK	parallel add current/reduce voltage drop
 B2	GND_STACK	ground
-B3	5V_USB_STACK (optional/NC) send 5V from charge (if you don't use it, leave it blank)
+B3	3V3_STACK	add pin 3.3V again
 B4	GND_STACK	ground
 B5	5V_USB_STACK (optional/NC) send 5V from charge (if you don't use it, leave it blank)
 B6	GND_STACK	ground
-B7	3V3_STACK	add pin 3.3V again
+B7	5V_USB_STACK (optional/NC) send 5V from charge (if you don't use it, leave it blank)
 B8	SPI_SCK (spare)	for sensor board // GPIO36 / 35 / 12
 B9	SPI_MOSI (spare) for sensor board // GPIO35 / 37
 B10	SPI_MISO (spare) for sensor board // GPIO37 / 38
