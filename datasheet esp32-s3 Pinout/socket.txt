@@ -30,8 +30,8 @@ B7 (22)	5V_USB_STACK (optional/NC) send 5V from charge (if you don't use it, lea
 B8 (23)	SPI_SCK (spare)	for sensor board // GPIO36 / 35 / 12
 B9 (24)	SPI_MOSI (spare) for sensor board // GPIO35 / 37
 B10 (25) SPI_MISO (spare) for sensor board // GPIO37 / 38
-B11 (26) SPI_CS1 (spare)	for sensor board // GPIO10 / 11 / 14
-B12 (27) SPI_CS2 (spare)	for sensor board // GPIO9 / 15
+B11 (26) SPI_CS1 (spare) for sensor board // GPIO10 / 11 / 14
+B12 (27) SPI_CS2 (spare) for sensor board // GPIO9 / 15
 B13 (28) INT1 (spare) interrupt from sensor/RTC // GPIO4 / 5 / 6
 B14 (29) INT2 (spare) interrupt // GPIO7 / 8
 B15 (30) GPIO spare / SYS_RST (optional)	reset or other signal
