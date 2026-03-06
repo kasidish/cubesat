@@ -79,11 +79,10 @@ void WebService::handleJSON() {
     j += "\"eff\":" + String(d.efficiency, 2) + ",";
     j += "\"lat\":" + String(d.lat, 6) + ",";
     j += "\"lng\":" + String(d.lng, 6) + ",";
-    j += "\"adc_n0\":" + String(d.adcNormalized[0], 2) + ",";
-    j += "\"adc_n1\":" + String(d.adcNormalized[1], 2) + ",";
-    j += "\"adc_n2\":" + String(d.adcNormalized[2], 2) + ",";
-    j += "\"adc_n3\":" + String(d.adcNormalized[3], 2) + ",";
-    j += "\"bat_pct\":" + String(d.estimatedBatteryPct, 1);
+    j += "\"adc0\":" + String(d.adcValues[0]) + ",";
+    j += "\"adc1\":" + String(d.adcValues[1]) + ",";
+    j += "\"adc2\":" + String(d.adcValues[2]) + ",";
+    j += "\"adc3\":" + String(d.adcValues[3]);
     j += "}";
     server.send(200, "application/json", j);
 }

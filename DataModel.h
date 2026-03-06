@@ -29,9 +29,6 @@ struct MeasurementData {
     float efficiency;
     double lat, lng;
     int adcValues[4];
-    float adcVoltages[4];
-    float adcNormalized[4];
-    float estimatedBatteryPct;
 };
 
 // System Modes
