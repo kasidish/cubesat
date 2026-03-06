@@ -24,10 +24,12 @@
 
 struct MeasurementData {
     char timestamp[32];
+    char snrData[128];
     float vin, iin, pin;
     float vout, iout, pout;
     float efficiency;
     double lat, lng;
+    int satellites;
     int adcValues[4];
 };
 

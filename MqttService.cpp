@@ -15,6 +15,11 @@ void MqttService::begin(SensorService* s) {
 #endif
 }
 
+bool MqttService::isConnected() {
+    return client.connected();
+}
+
+
 void MqttService::update() {
 #if ENABLE_MQTT
     if (WiFi.status() == WL_CONNECTED) {

@@ -1,8 +1,10 @@
 #include "SensorService.h"
 
 SensorService::SensorService() 
-    : ina_in(0x44), ina_out(0x41), gpsSerial(1), inaOK(false), rtcOK(false), dataQueuePtr(nullptr), bootTimeMs(0) {
+    : ina_in(0x41), ina_out(0x44), gpsSerial(1), inaInOK(false), inaOutOK(false), rtcOK(false), dataQueuePtr(nullptr), bootTimeMs(0), totalSatsInView(0) {
     mutex = xSemaphoreCreateMutex();
+    nmeaSentence = "";
+    snrDetails = "";
     memset(&latest, 0, sizeof(MeasurementData));
     for (int i = 0; i < 4; i++) {
         adcFiltered[i] = -1.0f;
@@ -21,9 +23,13 @@ void SensorService::begin() {
 #endif
 
 #if ENABLE_INA226
-    inaOK = ina_in.begin() && ina_out.begin();
-    if (inaOK) {
+    inaInOK = ina_in.begin();
+    if (inaInOK) {
         ina_in.setMaxCurrentShunt(0.2, 0.1);
+    }
+    
+    inaOutOK = ina_out.begin();
+    if (inaOutOK) {
         ina_out.setMaxCurrentShunt(0.2, 0.1);
     }
 #endif
@@ -68,23 +74,80 @@ void SensorService::loop() {
     makeTimestamp(d.timestamp, sizeof(d.timestamp));
 
 #if ENABLE_INA226
-    if (inaOK) {
+    if (inaInOK) {
         d.vin = ina_in.getBusVoltage();
         d.iin = ina_in.getCurrent();
         d.pin = ina_in.getPower();
+    }
+    if (inaOutOK) {
         d.vout = ina_out.getBusVoltage();
         d.iout = ina_out.getCurrent();
         d.pout = ina_out.getPower();
+    }
+    if (inaInOK && inaOutOK) {
         d.efficiency = (d.pin > 0.000001f) ? (d.pout / d.pin) * 100.0f : 0.0f;
     }
 #endif
 
 #if ENABLE_GPS
-    while (gpsSerial.available()) gps.encode(gpsSerial.read());
+    while (gpsSerial.available()) {
+        char c = gpsSerial.read();
+        gps.encode(c);
+
+        if (c == '\n') {
+            if (nmeaSentence.indexOf("GSV") > 0) {
+                // Parse GSV for SNR
+                int commaPos[20];
+                int commaCount = 0;
+                for (int i = 0; i < nmeaSentence.length(); i++) {
+                    if (nmeaSentence.charAt(i) == ',') {
+                        commaPos[commaCount++] = i;
+                    }
+                }
+                
+                if (commaCount >= 3) {
+                    String totalSatsStr = nmeaSentence.substring(commaPos[2] + 1, commaPos[3]);
+                    if (totalSatsStr.length() > 0) totalSatsInView = totalSatsStr.toInt();
+
+                    int msgNum = nmeaSentence.substring(commaPos[1] + 1, commaPos[2]).toInt();
+                    if (msgNum == 1) snrDetails = ""; 
+
+                    for (int i = 3; i + 3 < commaCount; i += 4) {
+                        String prn = nmeaSentence.substring(commaPos[i] + 1, commaPos[i+1]);
+                        String snr;
+                        if (i + 4 < commaCount) {
+                            snr = nmeaSentence.substring(commaPos[i+3] + 1, commaPos[i+4]);
+                        } else {
+                            int starIdx = nmeaSentence.indexOf('*');
+                            if (starIdx > commaPos[i+3]) {
+                                snr = nmeaSentence.substring(commaPos[i+3] + 1, starIdx);
+                            }
+                        }
+                        
+                        if (prn.length() > 0) {
+                            if (snr.length() == 0) snr = "-";
+                            snrDetails += prn + ":" + snr + " ";
+                        }
+                    }
+                }
+            }
+            nmeaSentence = "";
+        } else if (c != '\r') {
+            nmeaSentence += c;
+        }
+    }
+    
     if (gps.location.isValid()) {
         d.lat = gps.location.lat();
         d.lng = gps.location.lng();
     }
+    if (gps.satellites.isValid()) {
+        d.satellites = gps.satellites.value();
+    } else {
+        d.satellites = 0;
+    }
+    strncpy(d.snrData, snrDetails.c_str(), sizeof(d.snrData) - 1);
+    d.snrData[sizeof(d.snrData) - 1] = '\0';
 #endif
 
     // ADC Reading and Filtering
@@ -124,4 +187,24 @@ void SensorService::makeTimestamp(char* out, size_t outSize) {
     }
 #endif
     snprintf(out, outSize, "ms_%lu", (unsigned long)millis());
+}
+
+void SensorService::syncTime(struct tm* timeinfo) {
+#if ENABLE_RTC
+    if (rtcOK) {
+        rtc.adjust(DateTime(
+            timeinfo->tm_year + 1900,
+            timeinfo->tm_mon + 1,
+            timeinfo->tm_mday,
+            timeinfo->tm_hour,
+            timeinfo->tm_min,
+            timeinfo->tm_sec
+        ));
+        Serial.println("RTC Synced with NTP Time!");
+    } else {
+        Serial.println("RTC not OK, cannot sync.");
+    }
+#else
+    Serial.println("RTC not enabled, cannot sync.");
+#endif
 }

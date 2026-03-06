@@ -23,25 +23,32 @@ public:
     SensorService();
     void begin();
     MeasurementData getLatestData(); 
+    void syncTime(struct tm* timeinfo);
 
 private:
     static void task(void* param);
     void loop();
     void makeTimestamp(char* out, size_t outSize);
 
-    INA226 ina_in; // 0x40
-    INA226 ina_out; // 0x41
+    INA226 ina_in; // 0x41
+    INA226 ina_out; // 0x44
     RTC_DS3231 rtc;
     TinyGPSPlus gps;
     HardwareSerial gpsSerial;
 
-    bool inaOK;
+    bool inaInOK;
+    bool inaOutOK;
     bool rtcOK;
 
     MeasurementData latest;
     SemaphoreHandle_t mutex;
     QueueHandle_t* dataQueuePtr; // Pointer to the main queue
     
+    // GPS NMEA Parsing State
+    String nmeaSentence;
+    int totalSatsInView;
+    String snrDetails;
+
     // Runtime re-check / filter state
     float adcFiltered[4];
     unsigned long bootTimeMs;

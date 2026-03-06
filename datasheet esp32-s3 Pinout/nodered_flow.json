@@ -43,7 +43,7 @@
     {
         "id": "ui_group_telemetry",
         "type": "ui_group",
-        "name": "Telemetry Data",
+        "name": "System & Environment",
         "tab": "ui_tab_1",
         "order": 1,
         "disp": true,
@@ -56,6 +56,26 @@
         "name": "System Control",
         "tab": "ui_tab_1",
         "order": 2,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "ui_group_sensors",
+        "type": "ui_group",
+        "name": "Power System",
+        "tab": "ui_tab_1",
+        "order": 3,
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "ui_group_solar",
+        "type": "ui_group",
+        "name": "Solar Panels (ADC Logic)",
+        "tab": "ui_tab_1",
+        "order": 4,
         "disp": true,
         "width": "6",
         "collapse": false
@@ -77,16 +97,58 @@
         "y": 140,
         "wires": [
             [
-                "function_adc"
+                "function_adc",
+                "trigger_connection"
             ]
         ]
+    },
+    {
+        "id": "trigger_connection",
+        "type": "trigger",
+        "z": "tab_cubesat",
+        "name": "Connection Timeout",
+        "op1": "Online / Connected",
+        "op2": "Offline / Lost Connection",
+        "op1type": "str",
+        "op2type": "str",
+        "duration": "10",
+        "extend": true,
+        "overrideDelay": false,
+        "units": "s",
+        "reset": "",
+        "bytopic": "all",
+        "topic": "topic",
+        "outputs": 1,
+        "x": 350,
+        "y": 60,
+        "wires": [
+            [
+                "ui_connection_text"
+            ]
+        ]
+    },
+    {
+        "id": "ui_connection_text",
+        "type": "ui_text",
+        "z": "tab_cubesat",
+        "name": "Connection Status",
+        "group": "ui_group_telemetry",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "label": "MQTT Link",
+        "format": "<font color=\"{{msg.payload === 'Online / Connected' ? 'green' : 'red'}}\">{{msg.payload}}</font>",
+        "layout": "row-spread",
+        "x": 610,
+        "y": 60,
+        "wires": []
     },
     {
         "id": "function_adc",
         "type": "function",
         "z": "tab_cubesat",
-        "name": "Calculate ADC & Battery",
-        "func": "if (!msg.payload || typeof msg.payload !== 'object') {\n    try {\n        msg.payload = JSON.parse(msg.payload);\n    } catch (e) {\n        return msg;\n    }\n}\n\nlet d = msg.payload;\n\nfunction constrain(val, min, max) {\n    if (val < min) return min;\n    if (val > max) return max;\n    return val;\n}\n\nlet v0 = (d.adc0 / 4095.0) * 3.3;\nlet v1 = (d.adc1 / 4095.0) * 3.3;\nlet v2 = (d.adc2 / 4095.0) * 3.3;\nlet v3 = (d.adc3 / 4095.0) * 3.3;\n\nd.adc_n0 = constrain(1.0 - (v0 / 3.3), 0.0, 1.0);\nd.adc_n1 = constrain(1.0 - (v1 / 3.3), 0.0, 1.0);\nd.adc_n2 = constrain(1.0 - (v2 / 3.3), 0.0, 1.0);\nd.adc_n3 = constrain(1.0 - (v3 / 3.3), 0.0, 1.0);\n\nlet bat = 0.0;\nif (d.adc_n0 > 0.05) bat = 70.0 + (d.adc_n0 * 30.0);\nelse if (d.adc_n1 > 0.05) bat = 50.0 + (d.adc_n1 * 20.0);\nelse if (d.adc_n2 > 0.05) bat = 30.0 + (d.adc_n2 * 20.0);\nelse if (d.adc_n3 > 0.05) bat = 10.0 + (d.adc_n3 * 20.0);\nelse bat = d.adc_n3 * 10.0;\n\nd.bat_pct = parseFloat(constrain(bat, 0.0, 100.0).toFixed(1));\n\nmsg.payload = d;\nreturn msg;",
+        "name": "Parse Data & Calc ADC",
+        "func": "if (!msg.payload || typeof msg.payload !== 'object') {\n    try {\n        msg.payload = JSON.parse(msg.payload);\n    } catch (e) {\n        return msg;\n    }\n}\n\nlet d = msg.payload;\n\nfunction constrain(val, min, max) {\n    if (val < min) return min;\n    if (val > max) return max;\n    return val;\n}\n\n// ADC Logic Calculation\nlet v0 = (d.adc0 / 4095.0) * 3.3;\nlet v1 = (d.adc1 / 4095.0) * 3.3;\nlet v2 = (d.adc2 / 4095.0) * 3.3;\nlet v3 = (d.adc3 / 4095.0) * 3.3;\n\nd.adc_n0 = parseFloat(constrain(1.0 - (v0 / 3.3), 0.0, 1.0).toFixed(2));\nd.adc_n1 = parseFloat(constrain(1.0 - (v1 / 3.3), 0.0, 1.0).toFixed(2));\nd.adc_n2 = parseFloat(constrain(1.0 - (v2 / 3.3), 0.0, 1.0).toFixed(2));\nd.adc_n3 = parseFloat(constrain(1.0 - (v3 / 3.3), 0.0, 1.0).toFixed(2));\n\n// Battery Approximation\nlet bat = 0.0;\nif (d.adc_n0 > 0.05) bat = 70.0 + (d.adc_n0 * 30.0);\nelse if (d.adc_n1 > 0.05) bat = 50.0 + (d.adc_n1 * 20.0);\nelse if (d.adc_n2 > 0.05) bat = 30.0 + (d.adc_n2 * 20.0);\nelse if (d.adc_n3 > 0.05) bat = 10.0 + (d.adc_n3 * 20.0);\nelse bat = d.adc_n3 * 10.0;\n\n// Override bat with actual Voltage based estimate if Vin is valid (assuming 1S LiPo mapping roughly to 0-100)\nif(d.vin && d.vin > 0) {\n    // Super rough estimate for 1S battery max 4.2V, min 3.3V\n    let rough_v_bat_pct = ((d.vin - 3.3) / (4.2 - 3.3)) * 100;\n    d.bat_pct = parseFloat(constrain(rough_v_bat_pct, 0.0, 100.0).toFixed(1));\n} else {\n    d.bat_pct = parseFloat(constrain(bat, 0.0, 100.0).toFixed(1));\n}\n\n// Format strings for UI\nd.wifi_status = (d.wifi_connected === true || d.wifi_connected === \"true\") ? \"Connected\" : \"Disconnected\";\nd.mode_display = d.mode_str ? d.mode_str.toUpperCase() : \"UNKNOWN\";\n\nmsg.payload = d;\nreturn msg;",
         "outputs": 1,
         "noerr": 0,
         "initialize": "",
@@ -98,9 +160,64 @@
             [
                 "debug_1",
                 "ui_battery",
-                "change_vin"
+                "ui_vin_gauge",
+                "ui_iin_text",
+                "ui_pin_text",
+                "ui_adc0_gauge",
+                "ui_adc1_gauge",
+                "ui_wifi_status",
+                "ui_gps_sats",
+                "ui_sys_mode"
             ]
         ]
+    },
+    {
+        "id": "ui_sys_mode",
+        "type": "ui_text",
+        "z": "tab_cubesat",
+        "name": "Mode Status",
+        "group": "ui_group_telemetry",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "label": "ESP32 Mode",
+        "format": "<b>{{msg.payload.mode_display}}</b>",
+        "layout": "row-spread",
+        "x": 610,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "ui_wifi_status",
+        "type": "ui_text",
+        "z": "tab_cubesat",
+        "name": "WiFi Status",
+        "group": "ui_group_telemetry",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "label": "ESP32 WiFi",
+        "format": "{{msg.payload.wifi_status}}",
+        "layout": "row-spread",
+        "x": 610,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "ui_gps_sats",
+        "type": "ui_text",
+        "z": "tab_cubesat",
+        "name": "GPS Sats",
+        "group": "ui_group_telemetry",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "label": "GPS Satellites",
+        "format": "{{msg.payload.satellites}} (SNR: {{msg.payload.snr || '-'}})",
+        "layout": "row-spread",
+        "x": 600,
+        "y": 180,
+        "wires": []
     },
     {
         "id": "ui_battery",
@@ -108,7 +225,7 @@
         "z": "tab_cubesat",
         "name": "Battery %",
         "group": "ui_group_telemetry",
-        "order": 1,
+        "order": 5,
         "width": 0,
         "height": 0,
         "gtype": "gage",
@@ -117,54 +234,125 @@
         "format": "{{msg.payload.bat_pct}}",
         "min": 0,
         "max": 100,
-        "colors": ["#ca3838","#e6e600","#00b33c"],
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b33c"
+        ],
         "seg1": "20",
         "seg2": "60",
-        "x": 620,
-        "y": 140,
+        "x": 600,
+        "y": 220,
         "wires": []
     },
     {
-        "id": "change_vin",
-        "type": "change",
+        "id": "ui_vin_gauge",
+        "type": "ui_gauge",
         "z": "tab_cubesat",
-        "name": "Extract Vin",
-        "rules": [
-            {
-                "t": "set",
-                "p": "payload",
-                "pt": "msg",
-                "to": "payload.vin",
-                "tot": "msg"
-            }
+        "name": "Vin Gauge",
+        "group": "ui_group_sensors",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "gtype": "gage",
+        "title": "Voltage In (Vin)",
+        "label": "V",
+        "format": "{{msg.payload.vin}}",
+        "min": 0,
+        "max": 5.5,
+        "colors": [
+            "#ca3838",
+            "#e6e600",
+            "#00b33c"
         ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 630,
-        "y": 180,
-        "wires": [
-            [
-                "ui_vin"
-            ]
-        ]
+        "seg1": "3.3",
+        "seg2": "4.2",
+        "x": 610,
+        "y": 300,
+        "wires": []
     },
     {
-        "id": "ui_vin",
+        "id": "ui_iin_text",
         "type": "ui_text",
         "z": "tab_cubesat",
-        "name": "Vin",
-        "group": "ui_group_telemetry",
+        "name": "Iin (Current)",
+        "group": "ui_group_sensors",
         "order": 2,
         "width": 0,
         "height": 0,
-        "label": "Vin (V)",
-        "format": "{{msg.payload}}",
+        "label": "Current In (Iin)",
+        "format": "{{msg.payload.iin}} A",
         "layout": "row-spread",
-        "x": 810,
-        "y": 180,
+        "x": 610,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "ui_pin_text",
+        "type": "ui_text",
+        "z": "tab_cubesat",
+        "name": "Pin (Power)",
+        "group": "ui_group_sensors",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "label": "Power In (Pin)",
+        "format": "{{msg.payload.pin}} W",
+        "layout": "row-spread",
+        "x": 610,
+        "y": 380,
+        "wires": []
+    },
+    {
+        "id": "ui_adc0_gauge",
+        "type": "ui_gauge",
+        "z": "tab_cubesat",
+        "name": "ADC 0 (Logic)",
+        "group": "ui_group_solar",
+        "order": 1,
+        "width": "3",
+        "height": 0,
+        "gtype": "donut",
+        "title": "Solar Panel 0",
+        "label": "0.0 - 1.0",
+        "format": "{{msg.payload.adc_n0}}",
+        "min": 0,
+        "max": 1,
+        "colors": [
+            "#e6e600",
+            "#e6e600",
+            "#e6e600"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "x": 620,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "ui_adc1_gauge",
+        "type": "ui_gauge",
+        "z": "tab_cubesat",
+        "name": "ADC 1 (Logic)",
+        "group": "ui_group_solar",
+        "order": 2,
+        "width": "3",
+        "height": 0,
+        "gtype": "donut",
+        "title": "Solar Panel 1",
+        "label": "0.0 - 1.0",
+        "format": "{{msg.payload.adc_n1}}",
+        "min": 0,
+        "max": 1,
+        "colors": [
+            "#e6e600",
+            "#e6e600",
+            "#e6e600"
+        ],
+        "seg1": "",
+        "seg2": "",
+        "x": 620,
+        "y": 460,
         "wires": []
     },
     {
@@ -182,7 +370,7 @@
         "expiry": "",
         "broker": "mqtt_broker_1",
         "x": 640,
-        "y": 300,
+        "y": 620,
         "wires": []
     },
     {
@@ -205,7 +393,7 @@
         "topic": "topic",
         "topicType": "msg",
         "x": 170,
-        "y": 260,
+        "y": 580,
         "wires": [
             [
                 "mqtt_out_command"
@@ -232,7 +420,7 @@
         "topic": "topic",
         "topicType": "msg",
         "x": 180,
-        "y": 300,
+        "y": 620,
         "wires": [
             [
                 "mqtt_out_command"
@@ -259,76 +447,12 @@
         "topic": "topic",
         "topicType": "msg",
         "x": 170,
-        "y": 340,
+        "y": 660,
         "wires": [
             [
                 "mqtt_out_command"
             ]
         ]
-    },
-    {
-        "id": "mqtt_in_status",
-        "type": "mqtt in",
-        "z": "tab_cubesat",
-        "name": "Status In",
-        "topic": "cubesat/status",
-        "qos": "0",
-        "datatype": "json",
-        "broker": "mqtt_broker_1",
-        "nl": false,
-        "rap": true,
-        "rh": 0,
-        "inputs": 0,
-        "x": 120,
-        "y": 420,
-        "wires": [
-            [
-                "change_mode"
-            ]
-        ]
-    },
-    {
-        "id": "change_mode",
-        "type": "change",
-        "z": "tab_cubesat",
-        "name": "Extract Mode",
-        "rules": [
-            {
-                "t": "set",
-                "p": "payload",
-                "pt": "msg",
-                "to": "payload.mode",
-                "tot": "msg"
-            }
-        ],
-        "action": "",
-        "property": "",
-        "from": "",
-        "to": "",
-        "reg": false,
-        "x": 310,
-        "y": 420,
-        "wires": [
-            [
-                "ui_mode_text"
-            ]
-        ]
-    },
-    {
-        "id": "ui_mode_text",
-        "type": "ui_text",
-        "z": "tab_cubesat",
-        "name": "Current Mode",
-        "group": "ui_group_control",
-        "order": 4,
-        "width": 0,
-        "height": 0,
-        "label": "System Mode",
-        "format": "{{msg.payload | uppercase}}",
-        "layout": "row-spread",
-        "x": 520,
-        "y": 420,
-        "wires": []
     },
     {
         "id": "debug_1",
@@ -344,7 +468,7 @@
         "statusVal": "",
         "statusType": "auto",
         "x": 640,
-        "y": 100,
+        "y": 500,
         "wires": []
     }
 ]

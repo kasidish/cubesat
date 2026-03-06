@@ -1,22 +1,58 @@
 #include "WebService.h"
+#include "MqttService.h"
 
-WebService::WebService() : server(80), sensors(nullptr), camera(nullptr) {}
+WebService::WebService() : server(80), sensors(nullptr), camera(nullptr), mqtt(nullptr) {}
 
-void WebService::begin(SensorService* s, CameraService* c) {
+void WebService::begin(SensorService* s, CameraService* c, MqttService* m) {
     sensors = s;
     camera = c;
+    mqtt = m;
 
 #if ENABLE_WIFI
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("Cubesat_AP", "12345678");
+
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.print("Connecting to WiFi");
-    while (WiFi.status() != WL_CONNECTED) {
+    Serial.print("Connecting to WiFi ");
+    
+    // Wait up to 10 seconds for STA connection
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
         delay(500);
         Serial.print(".");
+        attempts++;
     }
     Serial.println("");
-    Serial.print("Connected! IP Address: ");
-    Serial.println(WiFi.localIP());
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.print("Connected! IP Address: ");
+        Serial.println(WiFi.localIP());
+
+        // Sync Time using NTP
+        configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+        Serial.println("Waiting for NTP time sync...");
+        struct tm timeinfo;
+        int retries = 0;
+        while (!getLocalTime(&timeinfo) && retries < 10) {
+            delay(500);
+            Serial.print(".");
+            retries++;
+        }
+        
+        if (retries < 10) {
+            Serial.println("\nTime synchronized.");
+            if (sensors) {
+                sensors->syncTime(&timeinfo);
+            }
+        } else {
+            Serial.println("\nFailed to obtain NTP time.");
+        }
+
+    } else {
+        Serial.println("WiFi STA Connection Failed. Running in AP Mode only.");
+        Serial.print("AP IP Address: ");
+        Serial.println(WiFi.softAPIP());
+    }
 
     server.on("/", HTTP_GET, std::bind(&WebService::handleRoot, this));
     server.on("/json", HTTP_GET, std::bind(&WebService::handleJSON, this));
@@ -35,28 +71,47 @@ void WebService::update() {
 }
 
 void WebService::handleRoot() {
-    // Keep it simple or load from SPIFFS ideally. For now, embedding as per original.
-    // Truncated for brevity, reusing the logic from original but calling APIs.
     String html = "<!DOCTYPE html><html><head>";
     html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
     html += "<title>ESP32-S3 Cubesat</title>";
-    html += "<style>body{background:#111;color:#eee;font-family:sans-serif;text-align:center;} img{max-width:100%;}</style>";
+    html += "<style>body{background:#111;color:#eee;font-family:sans-serif;text-align:center;} img{max-width:100%;} .status{border:1px solid #444;padding:10px;margin:10px auto;width:300px;text-align:left;}</style>";
     html += "</head><body>";
     html += "<h1>Cubesat Dashboard</h1>";
-    html += "<p>Mode: <span id='mode_str'>Loading...</span></p>";
+    
+    html += "<div class='status'>";
+    html += "<h3>Device Status</h3>";
+    html += "WiFi : <span id='st_wifi'>Loading...</span><br/>";
+    html += "MQTT : <span id='st_mqtt'>Loading...</span><br/>";
+    html += "Node-RED : <span id='st_nr'>Loading...</span><br/>";
+    html += "GPS Sats : <span id='st_gps'>Loading...</span><br/>";
+    html += "GPS SNR : <span id='st_snr'>Loading...</span><br/>";
+    html += "Battery : <span id='st_bat'>Loading...</span><br/>";
+    html += "Mode : <span id='mode_str'>Loading...</span><br/>";
+    html += "</div>";
+
     html += "<div style='margin-bottom: 20px;'>";
     html += "<button onclick=\"fetch('/setMode?m=sensor')\">Sensor Mode</button> ";
     html += "<button onclick=\"fetch('/setMode?m=camera')\">Camera Mode</button> ";
     html += "<button onclick=\"fetch('/setMode?m=sleep')\">Sleep</button>";
     html += "</div>";
+    
     html += "<img id='cam' src='/jpg' /><br/><br/>";
     html += "<button onclick=\"fetch('/capture')\">Capture to SD</button> ";
     html += "<button onclick=\"document.getElementById('cam').src='/jpg?t='+Date.now()\">Refresh</button>";
+    
     html += "<div id='data'>Loading...</div>";
     html += "<script>setInterval(async()=>{";
-    html += "  const r=await fetch('/json');const d=await r.json();";
-    html += "  document.getElementById('data').innerText = JSON.stringify(d,null,2);";
-    html += "  document.getElementById('mode_str').innerText = d.mode_str;";
+    html += "  try {";
+    html += "    const r=await fetch('/json');const d=await r.json();";
+    html += "    document.getElementById('data').innerText = JSON.stringify(d,null,2);";
+    html += "    document.getElementById('mode_str').innerText = d.mode_str;";
+    html += "    document.getElementById('st_wifi').innerText = d.wifi_connected ? 'Connected' : 'Disconnected';";
+    html += "    document.getElementById('st_mqtt').innerText = d.mqtt_connected ? 'Connected' : 'Disconnected';";
+    html += "    document.getElementById('st_nr').innerText = d.mqtt_connected ? 'Connected (via MQTT)' : 'Disconnected';";
+    html += "    document.getElementById('st_gps').innerText = d.satellites;";
+    html += "    document.getElementById('st_snr').innerText = d.snr || '-';";
+    html += "    document.getElementById('st_bat').innerText = d.vin ? (d.vin.toFixed(2) + 'V') : 'N/A';";
+    html += "  } catch(e) {}";
     html += "},2000);</script>";
     html += "</body></html>";
     server.send(200, "text/html", html);
@@ -67,6 +122,9 @@ void WebService::handleJSON() {
     MeasurementData d = sensors->getLatestData();
 
     String j = "{";
+    j += "\"wifi_connected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + ",";
+    bool mqttConn = mqtt ? mqtt->isConnected() : false;
+    j += "\"mqtt_connected\":" + String(mqttConn ? "true" : "false") + ",";
     j += "\"mode\":" + String(currentSystemMode) + ",";
     j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : currentSystemMode == MODE_CAMERA ? "Camera" : "Sleep") + "\",";
     j += "\"ts\":\"" + String(d.timestamp) + "\",";
@@ -79,6 +137,8 @@ void WebService::handleJSON() {
     j += "\"eff\":" + String(d.efficiency, 2) + ",";
     j += "\"lat\":" + String(d.lat, 6) + ",";
     j += "\"lng\":" + String(d.lng, 6) + ",";
+    j += "\"satellites\":" + String(d.satellites) + ",";
+    j += "\"snr\":\"" + String(d.snrData) + "\",";
     j += "\"adc0\":" + String(d.adcValues[0]) + ",";
     j += "\"adc1\":" + String(d.adcValues[1]) + ",";
     j += "\"adc2\":" + String(d.adcValues[2]) + ",";

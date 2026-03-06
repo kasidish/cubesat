@@ -46,14 +46,14 @@ void setup() {
     // 2. Sensors (I2C, GPS)
     sensorService.begin();
     
-    // 3. Telemetry (SD Card) - Depends on Queue and Camera (for photos)
+    // 3. MQTT Service
+    mqttService.begin(&sensorService);
+
+    // 4. Telemetry (SD Card) - Depends on Queue and Camera (for photos)
     telemetryService.begin(&dataQueue, &cameraService);
 
-    // 4. Web Service - Depends on Sensors (for data) and Camera (for streaming)
-    webService.begin(&sensorService, &cameraService);
-
-    // 5. MQTT Service
-    mqttService.begin(&sensorService);
+    // 5. Web Service - Depends on Sensors, Camera, and MQTT
+    webService.begin(&sensorService, &cameraService, &mqttService);
 }
 
 void loop() {

@@ -12,6 +12,8 @@ public:
     MqttService();
     void begin(SensorService* s);
     void update();
+    bool isConnected();
+
 
 private:
     void reconnect();
