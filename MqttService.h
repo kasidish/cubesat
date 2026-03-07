@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include "DataModel.h"
 #include "SensorService.h"
@@ -20,7 +21,12 @@ private:
     void publishTelemetry();
     void callback(char* topic, byte* payload, unsigned int length);
 
+#if ENABLE_MQTT_TLS
+    WiFiClientSecure espClient;
+#else
     WiFiClient espClient;
+#endif
+
     PubSubClient client;
     SensorService* sensors;
     unsigned long lastPublishTime;

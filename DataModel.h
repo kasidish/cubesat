@@ -9,17 +9,31 @@
 #define ENABLE_CAMERA  1
 #define ENABLE_SD      1
 #define ENABLE_MQTT    1
-#define ENABLE_INA226  0 // Set to 1 if hardware acts up
-#define ENABLE_RTC     0 // Set to 1 if hardware acts up
-#define ENABLE_GPS     0 // Set to 1 if hardware acts up
+#define ENABLE_WIFI_ENTERPRISE 1 // Set to 1 to use WPA2 Enterprise (eduroam)
+#define ENABLE_MQTT_TLS 1 // Set to 1 to bypass port 1883 blocking using port 8883 (TLS)
 
-// WI-FI CONFIGURATION
+#define ENABLE_INA226  1 // Set to 1 if hardware acts up
+#define ENABLE_RTC     1 // Set to 1 if hardware acts up
+#define ENABLE_GPS     1 // Set to 1 if hardware acts up
+
+// WI-FI CONFIGURATION (Standard WPA2 Personal)
 #define WIFI_SSID "YOUR_WIFI_SSID"
 #define WIFI_PASS "YOUR_WIFI_PASSWORD"
 
+// WI-FI ENTERPRISE CONFIGURATION (WPA2 Ent)
+#define EAP_IDENTITY "username@university.ac.th"
+#define EAP_USERNAME "username@university.ac.th"
+#define EAP_PASSWORD "password"
+
 // MQTT CONFIGURATION
 #define MQTT_BROKER "broker.hivemq.com"
-#define MQTT_PORT 1883
+
+#if ENABLE_MQTT_TLS
+    #define MQTT_PORT 8883
+#else
+    #define MQTT_PORT 1883
+#endif
+
 #define MQTT_TOPIC "cubesat/telemetry"
 
 struct MeasurementData {

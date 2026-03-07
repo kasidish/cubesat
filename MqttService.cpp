@@ -7,6 +7,9 @@ void MqttService::begin(SensorService* s) {
     sensors = s;
 
 #if ENABLE_MQTT
+#if ENABLE_MQTT_TLS
+    espClient.setInsecure(); // Bypass CA cert verification — uses encryption but skips validation
+#endif
     client.setServer(MQTT_BROKER, MQTT_PORT);
     client.setCallback([this](char* topic, byte* payload, unsigned int length) {
         this->callback(topic, payload, length);

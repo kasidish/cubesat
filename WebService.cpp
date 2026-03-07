@@ -1,5 +1,6 @@
 #include "WebService.h"
 #include "MqttService.h"
+#include "esp_wpa2.h"
 
 WebService::WebService() : server(80), sensors(nullptr), camera(nullptr), mqtt(nullptr) {}
 
@@ -10,9 +11,18 @@ void WebService::begin(SensorService* s, CameraService* c, MqttService* m) {
 
 #if ENABLE_WIFI
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP("Cubesat_AP", "12345678");
+    WiFi.softAP("Cubesat_GROUP4", "12345678");
 
+#if ENABLE_WIFI_ENTERPRISE
+    WiFi.disconnect(true);
+    esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY));
+    esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_USERNAME, strlen(EAP_USERNAME));
+    esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
+    esp_wifi_sta_wpa2_ent_enable();
+    WiFi.begin(WIFI_SSID); // For eduroam, SSID is often "eduroam"
+#else
     WiFi.begin(WIFI_SSID, WIFI_PASS);
+#endif
     Serial.print("Connecting to WiFi ");
     
     // Wait up to 10 seconds for STA connection
@@ -87,6 +97,7 @@ void WebService::handleRoot() {
     html += "GPS SNR : <span id='st_snr'>Loading...</span><br/>";
     html += "Battery : <span id='st_bat'>Loading...</span><br/>";
     html += "Mode : <span id='mode_str'>Loading...</span><br/>";
+    html += "Last Photo : <span id='st_photo'>-</span><br/>";
     html += "</div>";
 
     html += "<div style='margin-bottom: 20px;'>";
@@ -105,6 +116,11 @@ void WebService::handleRoot() {
     html += "    const r=await fetch('/json');const d=await r.json();";
     html += "    document.getElementById('data').innerText = JSON.stringify(d,null,2);";
     html += "    document.getElementById('mode_str').innerText = d.mode_str;";
+    html += "    if(d.ts){";
+    html += "      var parts=d.ts.split('T');";
+    html += "      var timeClean=parts[1]?parts[1].replace(/:/g,'-'):'';";
+    html += "      document.getElementById('st_photo').innerText='img_'+parts[0]+'_Time_'+timeClean;";
+    html += "    }";
     html += "    document.getElementById('st_wifi').innerText = d.wifi_connected ? 'Connected' : 'Disconnected';";
     html += "    document.getElementById('st_mqtt').innerText = d.mqtt_connected ? 'Connected' : 'Disconnected';";
     html += "    document.getElementById('st_nr').innerText = d.mqtt_connected ? 'Connected (via MQTT)' : 'Disconnected';";

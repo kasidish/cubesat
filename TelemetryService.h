@@ -27,6 +27,7 @@ private:
     CameraService* camera;
     SemaphoreHandle_t sdMutex;
     uint32_t photoCounter;
+    String latestTimestamp; // Last known timestamp for photo filenames
 };
 
 #endif

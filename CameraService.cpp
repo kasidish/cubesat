@@ -43,9 +43,9 @@ bool CameraService::begin() {
 }
 
 void CameraService::triggerCapture() {
-    if (currentSystemMode == MODE_CAMERA) {
-        captureRequested = true;
-    }
+    // Allow capture request from any mode.
+    // getFrame() will return nullptr if not in MODE_CAMERA, failing gracefully.
+    captureRequested = true;
 }
 
 bool CameraService::isCaptureRequested() {
