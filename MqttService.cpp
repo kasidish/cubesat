@@ -68,6 +68,8 @@ void MqttService::publishTelemetry() {
 
     String j = "{";
     j += "\"ts\":\"" + String(d.timestamp) + "\",";
+    j += "\"mode\":" + String(currentSystemMode) + ",";
+    j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : currentSystemMode == MODE_CAMERA ? "Camera" : "Sleep") + "\",";
     j += "\"vin\":" + String(d.vin, 3) + ",";
     j += "\"iin\":" + String(d.iin, 6) + ",";
     j += "\"pin\":" + String(d.pin, 6) + ",";
@@ -77,6 +79,8 @@ void MqttService::publishTelemetry() {
     j += "\"eff\":" + String(d.efficiency, 2) + ",";
     j += "\"lat\":" + String(d.lat, 6) + ",";
     j += "\"lng\":" + String(d.lng, 6) + ",";
+    j += "\"satellites\":" + String(d.satellites) + ",";
+    j += "\"snr\":\"" + String(d.snrData) + "\",";
     j += "\"adc0\":" + String(d.adcValues[0]) + ",";
     j += "\"adc1\":" + String(d.adcValues[1]) + ",";
     j += "\"adc2\":" + String(d.adcValues[2]) + ",";

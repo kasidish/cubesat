@@ -197,6 +197,6 @@ Efficiency(%), Latitude, Longitude, Satellites, SNR, ADC0, ADC1, ADC2, ADC3
 | --- | --- |
 | I2C (INA226, RTC) | SDA=41, SCL=42 |
 | GPS (UART) | RX=21, TX=47 |
-| ADC | GPIO 3, 14, 1, 2 |
+| ADC (socket order) | ADC0=Pin37, ADC1=Pin38, ADC2=Pin39, ADC3=Pin40 |
 | SD Card (SD_MMC 1-bit) | CLK=39, CMD=38, D0=40 |
 | Camera | XCLK=15, SIOD=4, SIOC=5, Y2-Y9=11,9,8,10,12,18,17,16, VSYNC=6, HREF=7, PCLK=13 |
