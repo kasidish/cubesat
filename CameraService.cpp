@@ -60,7 +60,9 @@ camera_fb_t* CameraService::getFrame() {
 #if !ENABLE_CAMERA
     return nullptr;
 #endif
-    // Allow access in any mode to prevent dashboard blocking
+    if (currentSystemMode != MODE_CAMERA) {
+        return nullptr;
+    }
     if (xSemaphoreTake(mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
         return nullptr;
     }

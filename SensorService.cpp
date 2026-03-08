@@ -77,7 +77,9 @@ void SensorService::task(void* param) {
 }
 
 void SensorService::loop() {
-    // Collect data even in CAMERA mode to maintain telemetry
+    if (currentSystemMode != MODE_SENSOR) {
+        return; // Skip hardware reading and data generation to save power
+    }
 
     MeasurementData d = {};
     makeTimestamp(d.timestamp, sizeof(d.timestamp));

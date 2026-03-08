@@ -94,7 +94,7 @@ void TelemetryService::logToSD(const MeasurementData& d) {
 
 void TelemetryService::savePhotoIfRequested() {
 #if ENABLE_SD && ENABLE_CAMERA
-    if (camera && camera->isCaptureRequested()) {
+    if (camera && camera->isCaptureRequested() && currentSystemMode == MODE_CAMERA) {
         camera->clearCaptureRequest();
 
         // Get frame
