@@ -19,12 +19,12 @@ bool CameraService::begin() {
     config.pin_vsync = CAM_VSYNC; config.pin_href = CAM_HREF;
     config.pin_sscb_sda = CAM_SIOD; config.pin_sscb_scl = CAM_SIOC;
     config.pin_pwdn = CAM_PWDN; config.pin_reset = CAM_RESET;
-    config.xclk_freq_hz = 20000000;
+    config.xclk_freq_hz = 10000000; // Reduced from 20MHz for stability
     config.pixel_format = PIXFORMAT_JPEG;
 
     if (psramFound()) {
         config.frame_size = FRAMESIZE_VGA;
-        config.jpeg_quality = 12;
+        config.jpeg_quality = 16; // Increased from 12 for smaller size/stability
         config.fb_count = 2;
         config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
@@ -60,9 +60,7 @@ camera_fb_t* CameraService::getFrame() {
 #if !ENABLE_CAMERA
     return nullptr;
 #endif
-    if (currentSystemMode != MODE_CAMERA) {
-        return nullptr;
-    }
+    // Allow access in any mode to prevent dashboard blocking
     if (xSemaphoreTake(mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
         return nullptr;
     }

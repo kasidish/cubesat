@@ -46,6 +46,8 @@ struct MeasurementData {
     int satellites;
     int adcValues[4];
     float battSoC; // Battery State of Charge (%)
+    float adcSoC;  // Redundant SoC from comparator (%)
+    float adcLogic[4]; // Inverted logic (0.0=Inactive, 1.0=Active)
 };
 
 // System Modes

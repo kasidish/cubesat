@@ -16,7 +16,8 @@ SensorService::SensorService()
 void SensorService::begin() {
     Wire.begin(I2C_SDA, I2C_SCL); // 41, 42
     Wire.setClock(100000);
-
+    Wire.setTimeOut(100);
+    
 #if ENABLE_RTC
     rtcOK = rtc.begin();
     if (rtcOK && rtc.lostPower()) {
@@ -25,14 +26,22 @@ void SensorService::begin() {
 #endif
 
 #if ENABLE_INA226
+    Serial.println("Initializing INA226 IN (0x41)...");
     inaInOK = ina_in.begin();
     if (inaInOK) {
         ina_in.setMaxCurrentShunt(0.2, 0.1);
+        Serial.println("INA226 IN: OK");
+    } else {
+        Serial.println("INA226 IN: FAILED/NOT FOUND");
     }
     
+    Serial.println("Initializing INA226 OUT (0x44)...");
     inaOutOK = ina_out.begin();
     if (inaOutOK) {
         ina_out.setMaxCurrentShunt(0.2, 0.1);
+        Serial.println("INA226 OUT: OK");
+    } else {
+        Serial.println("INA226 OUT: FAILED/NOT FOUND");
     }
 #endif
 
@@ -68,9 +77,7 @@ void SensorService::task(void* param) {
 }
 
 void SensorService::loop() {
-    if (currentSystemMode != MODE_SENSOR) {
-        return; // Skip hardware reading and data generation
-    }
+    // Collect data even in CAMERA mode to maintain telemetry
 
     MeasurementData d = {};
     makeTimestamp(d.timestamp, sizeof(d.timestamp));
@@ -88,6 +95,8 @@ void SensorService::loop() {
     }
     if (inaInOK && inaOutOK) {
         d.efficiency = (d.pin > 0.000001f) ? (d.pout / d.pin) * 100.0f : 0.0f;
+    } else {
+        d.efficiency = 0.0f;
     }
     
     // Update State of Charge
@@ -168,6 +177,19 @@ void SensorService::loop() {
         
         d.adcValues[i] = (int)adcFiltered[i];
     }
+
+    // Process Comparator Logic (Inverted: 3.3V->0, 0V->1)
+    int activeCount = 0;
+    for (int i = 0; i < 4; i++) {
+        // Normalise to 0.0-1.0 and invert (0V -> 1.0, 3.3V -> 0.0)
+        d.adcLogic[i] = 1.0f - (adcFiltered[i] / 4095.0f);
+        // Using 0.5f threshold for comparator "active" state
+        if (d.adcLogic[i] > 0.5f) {
+            activeCount++;
+        }
+    }
+    // Redundant SoC from 4-level comparator (0, 25, 50, 75, 100%)
+    d.adcSoC = activeCount * 25.0f;
 
     // Update local protected copy
     if (xSemaphoreTake(mutex, pdMS_TO_TICKS(50)) == pdTRUE) {

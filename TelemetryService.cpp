@@ -20,7 +20,7 @@ bool TelemetryService::begin(QueueHandle_t* q, CameraService* cam) {
         if (!SD_MMC.exists("/datalog.csv")) {
              File f = SD_MMC.open("/datalog.csv", FILE_WRITE);
              if (f) {
-                 f.println("Timestamp,Mode,Vin(V),Iin(A),Pin(W),Vout(V),Iout(A),Pout(W),Efficiency(%),Latitude,Longitude,Satellites,SNR,ADC0,ADC1,ADC2,ADC3,SoC(%)");
+                 f.println("Timestamp,Mode,Vin(V),Iin(A),Pin(W),Vout(V),Iout(A),Pout(W),Efficiency(%),Latitude,Longitude,Satellites,SNR,ADC0,ADC1,ADC2,ADC3,SoC(%),adcSoC(%),adcL0,adcL1,adcL2,adcL3");
                  f.close();
              }
         }
@@ -54,14 +54,15 @@ void TelemetryService::loop() {
 void TelemetryService::logToSerial(const MeasurementData& d) {
     const char* modeStr = (currentSystemMode == MODE_SENSOR) ? "SENSOR" :
                           (currentSystemMode == MODE_CAMERA) ? "CAMERA" : "SLEEP";
-    Serial.printf("/*%s,%s,%.3f,%.6f,%.6f,%.3f,%.6f,%.6f,%.2f,%.6f,%.6f,%d,%s,%d,%d,%d,%d,%.2f*/\n",
+    Serial.printf("/*%s,%s,%.3f,%.6f,%.6f,%.3f,%.6f,%.6f,%.2f,%.6f,%.6f,%d,%s,%d,%d,%d,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f*/\n",
         d.timestamp, modeStr,
         d.vin, d.iin, d.pin,
         d.vout, d.iout, d.pout,
         d.efficiency,
         d.lat, d.lng,
         d.satellites, d.snrData,
-        d.adcValues[0], d.adcValues[1], d.adcValues[2], d.adcValues[3], d.battSoC
+        d.adcValues[0], d.adcValues[1], d.adcValues[2], d.adcValues[3], d.battSoC,
+        d.adcSoC, d.adcLogic[0], d.adcLogic[1], d.adcLogic[2], d.adcLogic[3]
     );
 }
 
@@ -72,16 +73,19 @@ void TelemetryService::logToSD(const MeasurementData& d) {
         if (f) {
             const char* modeStr = (currentSystemMode == MODE_SENSOR) ? "SENSOR" :
                                   (currentSystemMode == MODE_CAMERA) ? "CAMERA" : "SLEEP";
-            f.printf("%s,%s,%.3f,%.6f,%.6f,%.3f,%.6f,%.6f,%.2f,%.6f,%.6f,%d,%s,%d,%d,%d,%d,%.2f\n",
+            f.printf("%s,%s,%.3f,%.6f,%.6f,%.3f,%.6f,%.6f,%.2f,%.6f,%.6f,%d,%s,%d,%d,%d,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f\n",
                 d.timestamp, modeStr,
                 d.vin, d.iin, d.pin,
                 d.vout, d.iout, d.pout,
                 d.efficiency,
                 d.lat, d.lng,
                 d.satellites, d.snrData,
-                d.adcValues[0], d.adcValues[1], d.adcValues[2], d.adcValues[3], d.battSoC
+                d.adcValues[0], d.adcValues[1], d.adcValues[2], d.adcValues[3], d.battSoC,
+                d.adcSoC, d.adcLogic[0], d.adcLogic[1], d.adcLogic[2], d.adcLogic[3]
             );
             f.close();
+        } else {
+            Serial.println("SD Error: Failed to open /datalog.csv for append");
         }
         xSemaphoreGive(sdMutex);
     }
@@ -118,12 +122,15 @@ void TelemetryService::savePhotoIfRequested() {
             for (int i = 0; timeTs[i]; i++) if (timeTs[i] == ':') timeTs[i] = '-';
             snprintf(filename, sizeof(filename), "/photos/img_%s_Time_%s_%lu.jpg", ts, timeTs, (unsigned long)(photoCounter));
             
+            Serial.printf("Attempting to save photo: %s\n", filename);
             File file = SD_MMC.open(filename, FILE_WRITE);
             if (file) {
                 file.write(fb->buf, fb->len);
                 file.close();
                 photoCounter++;
-                Serial.printf("Saved %s\n", filename);
+                Serial.printf("Successfully saved %s\n", filename);
+            } else {
+                Serial.printf("SD Error: Failed to open %s for writing\n", filename);
             }
             xSemaphoreGive(sdMutex);
         }
