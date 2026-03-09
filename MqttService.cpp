@@ -11,6 +11,7 @@ void MqttService::begin(SensorService* s) {
     espClient.setInsecure(); // Bypass CA cert verification — uses encryption but skips validation
 #endif
     client.setServer(MQTT_BROKER, MQTT_PORT);
+    client.setBufferSize(512); // Increase buffer for large JSON payloads
     client.setCallback([this](char* topic, byte* payload, unsigned int length) {
         this->callback(topic, payload, length);
     });
@@ -69,6 +70,8 @@ void MqttService::publishTelemetry() {
     auto safeNum = [](float v) { return (isnan(v) || isinf(v)) ? 0.0f : v; };
 
     String j = "{";
+    j += "\"wifi_connected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + ",";
+    j += "\"mqtt_connected\":true,"; // If we are here, MQTT is connected
     j += "\"ts\":\"" + String(d.timestamp) + "\",";
     j += "\"mode\":" + String(currentSystemMode) + ",";
     j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : "Sleep") + "\",";

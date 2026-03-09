@@ -21,10 +21,10 @@ The project uses Object-Oriented Design (OOD) where each hardware/functional blo
 ### Feature Switches
 ```cpp
 #define ENABLE_WIFI            1
-#define ENABLE_SD              1
+#define ENABLE_SD              0  // Set to 1 if SD card is connected
 #define ENABLE_MQTT            1
-#define ENABLE_WIFI_ENTERPRISE 1  // 1 = WPA2 Enterprise (eduroam), 0 = WPA2 Personal
-#define ENABLE_MQTT_TLS        1  // 1 = Port 8883 (TLS), 0 = Port 1883 (plain)
+#define ENABLE_WIFI_ENTERPRISE 0  // 0 = Hotspot, 1 = eduroam
+#define ENABLE_MQTT_TLS        0  // 0 = Port 1883 (Plain), 1 = Port 8883 (TLS)
 #define ENABLE_INA226          1
 #define ENABLE_RTC             1
 #define ENABLE_GPS             1
@@ -32,10 +32,10 @@ The project uses Object-Oriented Design (OOD) where each hardware/functional blo
 
 ### WiFi Credentials
 ```cpp
-// WPA2 Personal (home/hotspot)
+// WPA2 Personal (Hotspot)
 #define WIFI_SSID "YOUR_WIFI_SSID"
 #define WIFI_PASS "YOUR_WIFI_PASSWORD"
-
+```
 // WPA2 Enterprise (eduroam)
 #define EAP_IDENTITY "username@university.ac.th"
 #define EAP_USERNAME "username@university.ac.th"
@@ -93,9 +93,9 @@ Modes are controlled via the web dashboard, or remotely via MQTT command topic `
 │  ┌─────────────────────▼────────────────────────────────────────┐   │
 │  │ TelemetryTask (Priority 1)                                   │   │
 │  │  1. Pop MeasurementData from Queue                           │   │
-│  │  2. Write CSV row to /datalog.csv on SD Card                 │
-│  │     (Timestamp, Mode, INA226, GPS, Satellites, ADC×4)        │
-│  │  3. Print /* ... */ to Serial (Serial Studio compatible)     │
+│  │  2. Write CSV row to /datalog.csv on SD Card                 │   │
+│  │     (Timestamp, Mode, INA226, GPS, Satellites, ADC×4)        │   │
+│  │  3. Print /* ... */ to Serial (Serial Studio compatible)     │   │
 │  │  4. If capture requested → save /photos/img_DATE_Time_TIME   │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
