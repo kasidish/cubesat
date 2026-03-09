@@ -1,14 +1,12 @@
 #include <Arduino.h>
 #include "DataModel.h"
 #include "SensorService.h"
-#include "CameraService.h"
 #include "TelemetryService.h"
 #include "WebService.h"
 #include "MqttService.h"
 
 // Global Services
 SensorService sensorService;
-CameraService cameraService;
 TelemetryService telemetryService;
 WebService webService;
 MqttService mqttService;
@@ -34,26 +32,18 @@ void setup() {
     sensorService.setDataQueue(&dataQueue);
 
     // Initialize Services
-    // Order matters mostly for dependencies (telemetry needs SD, camera needs PSRAM check inside)
     
-    // 1. Camera
-    if (!cameraService.begin()) {
-        Serial.println("Camera Init Failed");
-    } else {
-        Serial.println("Camera Init OK");
-    }
-
-    // 2. Sensors (I2C, GPS)
+    // 1. Sensors (I2C, GPS)
     sensorService.begin();
     
-    // 3. MQTT Service
+    // 2. MQTT Service
     mqttService.begin(&sensorService);
 
-    // 4. Telemetry (SD Card) - Depends on Queue and Camera (for photos)
-    telemetryService.begin(&dataQueue, &cameraService);
+    // 3. Telemetry (SD Card) - Depends on Queue
+    telemetryService.begin(&dataQueue);
 
-    // 5. Web Service - Depends on Sensors, Camera, and MQTT
-    webService.begin(&sensorService, &cameraService, &mqttService);
+    // 4. Web Service - Depends on Sensors and MQTT
+    webService.begin(&sensorService, &mqttService);
 }
 
 void loop() {

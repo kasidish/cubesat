@@ -6,7 +6,7 @@
 
 // FEATURE SWITCHES
 #define ENABLE_WIFI    1
-#define ENABLE_CAMERA  1
+#define ENABLE_CAMERA  0
 #define ENABLE_SD      1
 #define ENABLE_MQTT    1
 #define ENABLE_WIFI_ENTERPRISE 1 // Set to 1 to use WPA2 Enterprise (eduroam)
@@ -53,7 +53,6 @@ struct MeasurementData {
 // System Modes
 enum OperationMode {
     MODE_SENSOR,    // Only read sensors, send data
-    MODE_CAMERA,    // Only use camera, no sensors
     MODE_SLEEP      // Pause sensors and camera, wait for wakeup command
 };
 

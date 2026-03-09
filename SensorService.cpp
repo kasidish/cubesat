@@ -215,7 +215,9 @@ void SensorService::makeTimestamp(char* out, size_t outSize) {
 #if ENABLE_RTC
     if (rtcOK) {
         DateTime now = rtc.now();
-        snprintf(out, outSize, "%04d-%02d-%02dT%02d:%02d:%02d",
+        const char* days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+        snprintf(out, outSize, "%s %04d-%02d-%02d %02d:%02d:%02d",
+                 days[now.dayOfTheWeek()],
                  now.year(), now.month(), now.day(),
                  now.hour(), now.minute(), now.second());
         return;

@@ -1,12 +1,12 @@
 #include "WebService.h"
 #include "MqttService.h"
 #include "esp_eap_client.h"
+#include "esp_wifi.h"
 
-WebService::WebService() : server(80), sensors(nullptr), camera(nullptr), mqtt(nullptr) {}
+WebService::WebService() : server(80), sensors(nullptr), mqtt(nullptr) {}
 
-void WebService::begin(SensorService* s, CameraService* c, MqttService* m) {
+void WebService::begin(SensorService* s, MqttService* m) {
     sensors = s;
-    camera = c;
     mqtt = m;
 
 #if ENABLE_WIFI
@@ -18,7 +18,7 @@ void WebService::begin(SensorService* s, CameraService* c, MqttService* m) {
     esp_eap_client_set_identity((uint8_t *)EAP_IDENTITY, strlen(EAP_IDENTITY));
     esp_eap_client_set_username((uint8_t *)EAP_USERNAME, strlen(EAP_USERNAME));
     esp_eap_client_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
-    esp_eap_client_enable();
+    esp_wifi_sta_enterprise_enable();
     WiFi.begin(WIFI_SSID); // For eduroam, SSID is often "eduroam"
 #else
     WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -66,8 +66,6 @@ void WebService::begin(SensorService* s, CameraService* c, MqttService* m) {
 
     server.on("/", HTTP_GET, std::bind(&WebService::handleRoot, this));
     server.on("/json", HTTP_GET, std::bind(&WebService::handleJSON, this));
-    server.on("/jpg", HTTP_GET, std::bind(&WebService::handleJPG, this));
-    server.on("/capture", HTTP_GET, std::bind(&WebService::handleCapture, this));
     server.on("/status", HTTP_GET, std::bind(&WebService::handleStatus, this)); // Plain text
     server.on("/setMode", HTTP_GET, std::bind(&WebService::handleSetMode, this));
 
@@ -77,6 +75,22 @@ void WebService::begin(SensorService* s, CameraService* c, MqttService* m) {
 }
 
 void WebService::update() {
+#if ENABLE_WIFI
+    static unsigned long lastCheck = 0;
+    if (millis() - lastCheck > 10000) { // Check every 10s
+        lastCheck = millis();
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("WiFi connection lost. Reconnecting...");
+            // Re-trigger connection if not already connecting
+            // For WPA2 Enterprise or regular
+#if ENABLE_WIFI_ENTERPRISE
+            WiFi.begin(WIFI_SSID);
+#else
+            WiFi.begin(WIFI_SSID, WIFI_PASS);
+#endif
+        }
+    }
+#endif
     server.handleClient();
 }
 
@@ -97,18 +111,12 @@ void WebService::handleRoot() {
     html += "Battery : <span id='st_bat'>Loading...</span><br/>";
     html += "Mode : <span id='mode_str'>Loading...</span><br/>";
     html += "Backup Bat : <span id='st_adcsoc'>Loading...</span><br/>";
-    html += "Last Photo : <span id='st_photo'>-</span><br/>";
     html += "</div>";
 
     html += "<div style='margin-bottom: 20px;'>";
     html += "<button onclick=\"fetch('/setMode?m=sensor')\">Sensor Mode</button> ";
-    html += "<button onclick=\"fetch('/setMode?m=camera')\">Camera Mode</button> ";
     html += "<button onclick=\"fetch('/setMode?m=sleep')\">Sleep</button>";
     html += "</div>";
-    
-    html += "<img id='cam' src='/jpg' /><br/><br/>";
-    html += "<button onclick=\"fetch('/capture')\">Capture to SD</button> ";
-    html += "<button onclick=\"document.getElementById('cam').src='/jpg?t='+Date.now()\">Refresh</button>";
     
     html += "<div id='data'>Loading...</div>";
     html += "<script>setInterval(async()=>{";
@@ -116,11 +124,6 @@ void WebService::handleRoot() {
     html += "    const r=await fetch('/json');const d=await r.json();";
     html += "    document.getElementById('data').innerText = JSON.stringify(d,null,2);";
     html += "    document.getElementById('mode_str').innerText = d.mode_str;";
-    html += "    if(d.ts){";
-    html += "      var parts=d.ts.split('T');";
-    html += "      var timeClean=parts[1]?parts[1].replace(/:/g,'-'):'';";
-    html += "      document.getElementById('st_photo').innerText='img_'+parts[0]+'_Time_'+timeClean;";
-    html += "    }";
     html += "    document.getElementById('st_wifi').innerText = d.wifi_connected ? 'Connected' : 'Disconnected';";
     html += "    document.getElementById('st_mqtt').innerText = d.mqtt_connected ? 'Connected' : 'Disconnected';";
     html += "    document.getElementById('st_nr').innerText = d.mqtt_connected ? 'Connected (via MQTT)' : 'Disconnected';";
@@ -144,7 +147,7 @@ void WebService::handleJSON() {
     bool mqttConn = mqtt ? mqtt->isConnected() : false;
     j += "\"mqtt_connected\":" + String(mqttConn ? "true" : "false") + ",";
     j += "\"mode\":" + String(currentSystemMode) + ",";
-    j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : currentSystemMode == MODE_CAMERA ? "Camera" : "Sleep") + "\",";
+    j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : "Sleep") + "\",";
     j += "\"ts\":\"" + String(d.timestamp) + "\",";
     j += "\"vin\":" + String(d.vin, 3) + ",";
     j += "\"iin\":" + String(d.iin, 6) + ",";
@@ -170,32 +173,6 @@ void WebService::handleJSON() {
     server.send(200, "application/json", j);
 }
 
-void WebService::handleJPG() {
-    if (!camera) { server.send(503, "text/plain", "No Camera"); return; }
-    
-    camera_fb_t* fb = camera->getFrame();
-    if (!fb) {
-        server.send(503, "text/plain", "Camera Busy/Fail");
-        return;
-    }
-
-    WiFiClient client = server.client();
-    server.setContentLength(fb->len);
-    server.send(200, "image/jpeg", "");
-    client.write(fb->buf, fb->len);
-    
-    camera->returnFrame(fb);
-}
-
-void WebService::handleCapture() {
-    if (camera) {
-        camera->triggerCapture();
-        server.send(200, "text/plain", "Capture Requested");
-    } else {
-        server.send(500, "text/plain", "No Camera");
-    }
-}
-
 void WebService::handleStatus() {
     handleJSON(); // Reuse JSON for status
 }
@@ -208,11 +185,6 @@ void WebService::handleSetMode() {
             currentSystemMode = MODE_SENSOR;
             Serial.println("Web: Switched to SENSOR MODE");
             server.send(200, "text/plain", "Mode set to Sensor");
-            return;
-        } else if (md == "camera") {
-            currentSystemMode = MODE_CAMERA;
-            Serial.println("Web: Switched to CAMERA MODE");
-            server.send(200, "text/plain", "Mode set to Camera");
             return;
         } else if (md == "sleep" || md == "wakeup") {
             currentSystemMode = (md == "sleep") ? MODE_SLEEP : MODE_SENSOR;

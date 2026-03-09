@@ -69,7 +69,7 @@ void MqttService::publishTelemetry() {
     String j = "{";
     j += "\"ts\":\"" + String(d.timestamp) + "\",";
     j += "\"mode\":" + String(currentSystemMode) + ",";
-    j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : currentSystemMode == MODE_CAMERA ? "Camera" : "Sleep") + "\",";
+    j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : "Sleep") + "\",";
     j += "\"vin\":" + String(d.vin, 3) + ",";
     j += "\"iin\":" + String(d.iin, 6) + ",";
     j += "\"pin\":" + String(d.pin, 6) + ",";
@@ -113,10 +113,6 @@ void MqttService::callback(char* topic, byte* payload, unsigned int length) {
             currentSystemMode = MODE_SENSOR;
             Serial.println("Switched to SENSOR MODE");
             client.publish("cubesat/status", "{\"mode\":\"sensor\"}");
-        } else if (message == "camera" || message == "mode:camera") {
-            currentSystemMode = MODE_CAMERA;
-            Serial.println("Switched to CAMERA MODE");
-            client.publish("cubesat/status", "{\"mode\":\"camera\"}");
         } else if (message == "sleep" || message == "mode:sleep") {
             currentSystemMode = MODE_SLEEP;
             Serial.println("Switched to SLEEP MODE");
