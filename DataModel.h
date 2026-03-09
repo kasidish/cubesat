@@ -6,10 +6,10 @@
 
 // FEATURE SWITCHES
 #define ENABLE_WIFI    1
-#define ENABLE_SD      1
+#define ENABLE_SD      0
 #define ENABLE_MQTT    1
-#define ENABLE_WIFI_ENTERPRISE 1 // Set to 1 to use WPA2 Enterprise (eduroam)
-#define ENABLE_MQTT_TLS 1 // Set to 1 to bypass port 1883 blocking using port 8883 (TLS)
+#define ENABLE_WIFI_ENTERPRISE 0 // Set to 1 to use WPA2 Enterprise (eduroam)
+#define ENABLE_MQTT_TLS 0 // Set to 1 to bypass port 1883 blocking using port 8883 (TLS)
 
 #define ENABLE_INA226  1 // Set to 1 if hardware acts up
 #define ENABLE_RTC     1 // Set to 1 if hardware acts up

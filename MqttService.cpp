@@ -66,22 +66,24 @@ void MqttService::publishTelemetry() {
 
     MeasurementData d = sensors->getLatestData();
 
+    auto safeNum = [](float v) { return (isnan(v) || isinf(v)) ? 0.0f : v; };
+
     String j = "{";
     j += "\"ts\":\"" + String(d.timestamp) + "\",";
     j += "\"mode\":" + String(currentSystemMode) + ",";
     j += "\"mode_str\":\"" + String(currentSystemMode == MODE_SENSOR ? "Sensor" : "Sleep") + "\",";
-    j += "\"vin\":" + String(d.vin, 3) + ",";
-    j += "\"iin\":" + String(d.iin, 6) + ",";
-    j += "\"pin\":" + String(d.pin, 6) + ",";
-    j += "\"vout\":" + String(d.vout, 3) + ",";
-    j += "\"iout\":" + String(d.iout, 6) + ",";
-    j += "\"pout\":" + String(d.pout, 6) + ",";
-    j += "\"eff\":" + String(d.efficiency, 2) + ",";
-    j += "\"lat\":" + String(d.lat, 6) + ",";
-    j += "\"lng\":" + String(d.lng, 6) + ",";
+    j += "\"vin\":" + String(safeNum(d.vin), 3) + ",";
+    j += "\"iin\":" + String(safeNum(d.iin), 6) + ",";
+    j += "\"pin\":" + String(safeNum(d.pin), 6) + ",";
+    j += "\"vout\":" + String(safeNum(d.vout), 3) + ",";
+    j += "\"iout\":" + String(safeNum(d.iout), 6) + ",";
+    j += "\"pout\":" + String(safeNum(d.pout), 6) + ",";
+    j += "\"eff\":" + String(safeNum(d.efficiency), 2) + ",";
+    j += "\"lat\":" + String(safeNum(d.lat), 6) + ",";
+    j += "\"lng\":" + String(safeNum(d.lng), 6) + ",";
     j += "\"satellites\":" + String(d.satellites) + ",";
-    j += "\"batt_soc\":" + String(d.battSoC, 2) + ",";
-    j += "\"adc_soc\":" + String(d.adcSoC, 1) + ",";
+    j += "\"batt_soc\":" + String(safeNum(d.battSoC), 2) + ",";
+    j += "\"adc_soc\":" + String(safeNum(d.adcSoC), 1) + ",";
     j += "\"logic0\":" + String(d.logicLevels[0], 2) + ",";
     j += "\"logic1\":" + String(d.logicLevels[1], 2) + ",";
     j += "\"logic2\":" + String(d.logicLevels[2], 2) + ",";
